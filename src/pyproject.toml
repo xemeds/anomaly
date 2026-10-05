@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools==84.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anomaly"
+version = "0.1.0"
+description = "Unsupervised anomaly detection on spacecraft telemetry"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy==2.4.6",
+    "scipy==1.17.1",
+    "scikit-learn==1.9.1",
+    # CPU wheel. The PyPI torch package installs CUDA libraries.
+    "torch @ https://download.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp311-cp311-manylinux_2_28_x86_64.whl#sha256=5e38154c8896d426a5df58bf2276b603e82184dfae4f54d77dbb212f36e34f37",
+]
+
+[project.optional-dependencies]
+dev = ["ruff==0.16.10"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.ruff]
+target-version = "py311"
+src = ["."]

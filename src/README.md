@@ -9,14 +9,14 @@ source venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The pinned PyTorch wheel is the CPU build for Linux x86_64. `anomaly/config.py` sets the seed to 42 when it is imported. `7z` is required for `load`, because `channels.csv` uses Deflate64.
+The pinned PyTorch wheel is the CPU build for Linux x86_64. Importing `anomaly.config` sets the seed to 42. `load` needs `7z`, because `channels.csv` is stored with Deflate64.
 
 ```bash
 python -c "import anomaly.config as c; print(c.SEED)"
 ruff check .
 ```
 
-Stay in `src/` with the virtualenv active. `data/` is `../data`. `results/` is `../results`.
+Stay in `src/` with the virtualenv active. Data files are in `../data`. Result files are in `../results`.
 
 ## Commands
 
@@ -38,14 +38,14 @@ python -m anomaly.evaluate --model autoencoder2
 python -m anomaly.evaluate --model autoencoder3
 ```
 
-Each model can be run on its own after `preprocess`. Each `evaluate` command can be run on its own after that model’s score file exists.
+Any model can be run on its own once `preprocess` has finished. Any evaluation can be run on its own once that model’s score file exists.
 
 ## Inputs and outputs
 
 | Command | Reads | Writes |
 | --- | --- | --- |
 | `download` | Zenodo record 15237121 | `../data/ESA-Mission1.zip` |
-| `load` | that zip, using `7z` | `../data/ESA-Mission1/` (`labels.csv`, `anomaly_types.csv`, `channels.csv`, `channels/channel_41.zip` … `channel_46.zip`) |
+| `load` | that zip, using `7z` | `../data/ESA-Mission1/` (`labels.csv`, `anomaly_types.csv`, `channels.csv`, `channels/channel_41.zip` through `channel_46.zip`) |
 | `preprocess` | the unpacked files | `../data/preprocessed.npz` |
 | `iforest` | `preprocessed.npz` | `../data/iforest.npz` |
 | `iforest2` | `preprocessed.npz` | `../data/iforest2.npz` |
@@ -54,14 +54,6 @@ Each model can be run on its own after `preprocess`. Each `evaluate` command can
 | `autoencoder3` | `preprocessed.npz` | `../data/autoencoder3.npz` |
 | `evaluate --model <name>` | `preprocessed.npz` and `../data/<name>.npz` | `../results/<name>.json` |
 
-`download` leaves an existing zip in place and exits with status 0. `data/` is gitignored. Score rows follow the window rows in `preprocessed.npz`.
+If the zip is already present, `download` leaves it in place and exits with status 0. `data/` is gitignored. Score rows follow the window rows in `preprocessed.npz`.
 
-## Order for a full run
-
-```text
-download
-load
-preprocess
-iforest, iforest2, autoencoder, autoencoder2, autoencoder3
-evaluate for each model name
-```
+A full run is `download`, then `load`, then `preprocess`, then the five model commands, then `evaluate` once for each model name.

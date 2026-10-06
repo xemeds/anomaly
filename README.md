@@ -1,8 +1,8 @@
 # Unsupervised anomaly detection on spacecraft telemetry
 
-This project detects labeled events in ESA-ADB Mission 1 telemetry. It compares a classical method, Isolation Forest, with a reconstruction method, a 1D-CNN autoencoder.
+This project looks for labeled events in ESA-ADB Mission 1. It compares Isolation Forest with a small 1D-CNN autoencoder.
 
-Dataset: ESA-ADB Mission 1, April 2025 release ([Zenodo 15237121](https://zenodo.org/records/15237121)). Channels 41–46.
+The data are the April 2025 release of Mission 1 ([Zenodo 15237121](https://zenodo.org/records/15237121)), channels 41–46.
 
 ## Documentation
 
@@ -12,17 +12,17 @@ Dataset: ESA-ADB Mission 1, April 2025 release ([Zenodo 15237121](https://zenodo
 4. [Evaluation and results](docs/04-evaluation.md)
 5. [Final report](docs/final-report.md)
 
-How to run the commands is in [src/README.md](src/README.md).
+Commands are in [src/README.md](src/README.md).
 
 ## Pipeline
 
-`preprocess` writes `data/preprocessed.npz`. Each model reads that file and writes its own score file. `evaluate --model <name>` chooses the threshold on months 82–84 and scores months 85–168. It writes `results/<name>.json`.
+`preprocess` writes `data/preprocessed.npz`. Each model reads that file and writes its own scores. `evaluate --model <name>` picks the threshold on validation months 82–84, scores test months 85–168, and writes `results/<name>.json`.
 
 ## Results
 
-Corrected event-wise F0.5 is the main score. Point-adjusted F1 is reported next to it. The full table is in [evaluation](docs/04-evaluation.md).
+The main score is event-wise corrected F0.5. Point-adjusted F1 is reported next to it. The full table is in [evaluation](docs/04-evaluation.md).
 
-| Model | Event F0.5 | Event recall | Point-adjusted F1 |
+| Model | Event-wise corrected F0.5 | Event recall | Point-adjusted F1 |
 | --- | ---: | ---: | ---: |
 | Isolation Forest | 0.197 | 24/65 | 0.565 |
 | Isolation Forest 2 | 0.475 | 10/65 | 0.569 |
@@ -30,4 +30,4 @@ Corrected event-wise F0.5 is the main score. Point-adjusted F1 is reported next 
 | Autoencoder 2 | 0.756 | 25/65 | 0.579 |
 | Autoencoder 3 | 0.217 | 25/65 | 0.566 |
 
-The best classical result is Isolation Forest 2. The best reconstruction result is the autoencoder. Autoencoder 2 matches its event-wise F0.5. Event recall for the autoencoder is 25/65 = 0.385. Its F0.5 of 0.756 is not that recall.
+The highest classical score is Isolation Forest 2. The highest reconstruction score is the autoencoder. Autoencoder 2 matches it on event-wise corrected F0.5. For the autoencoder, event recall is 25/65 = 0.385. The F0.5 of 0.756 is not that recall.

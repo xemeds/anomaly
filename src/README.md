@@ -9,18 +9,16 @@ source venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-The pinned PyTorch wheel is the CPU build for Linux x86_64. `anomaly/config.py` holds the seed. Import `anomaly.config` before any other project code.
+The pinned PyTorch wheel is the CPU build for Linux x86_64. `anomaly/config.py` sets the seed to 42 when it is imported. `7z` is required for `load`, because `channels.csv` uses Deflate64.
 
 ```bash
 python -c "import anomaly.config as c; print(c.SEED)"
 ruff check .
 ```
 
-`42` means the seed module loaded. `7z` is required for `load`, because `channels.csv` is stored with Deflate64.
+Stay in `src/` with the virtualenv active. `data/` is `../data`. `results/` is `../results`.
 
 ## Commands
-
-Stay in `src/` with the virtualenv active. `data/` is `../data`. `results/` is `../results`.
 
 ```bash
 python -m anomaly.download
@@ -40,22 +38,30 @@ python -m anomaly.evaluate --model autoencoder2
 python -m anomaly.evaluate --model autoencoder3
 ```
 
-`download` saves `../data/ESA-Mission1.zip` from https://zenodo.org/records/15237121. If the zip is already there, it is left in place and the command exits with status 0.
+Each model can be run on its own after `preprocess`. Each `evaluate` command can be run on its own after that model’s score file exists.
 
-`load` unpacks `labels.csv`, `anomaly_types.csv`, `channels.csv`, and `channel_41.zip` through `channel_46.zip` into `../data/ESA-Mission1/`.
+## Inputs and outputs
 
-`preprocess` writes `../data/preprocessed.npz`. Each model reads that file and writes its own score file. `evaluate` reads one score file plus the split, window starts, and event-interval table. It freezes the threshold on months 82–84 and scores months 85–168.
+| Command | Reads | Writes |
+| --- | --- | --- |
+| `download` | Zenodo record 15237121 | `../data/ESA-Mission1.zip` |
+| `load` | that zip, using `7z` | `../data/ESA-Mission1/` (`labels.csv`, `anomaly_types.csv`, `channels.csv`, `channels/channel_41.zip` … `channel_46.zip`) |
+| `preprocess` | the unpacked files | `../data/preprocessed.npz` |
+| `iforest` | `preprocessed.npz` | `../data/iforest.npz` |
+| `iforest2` | `preprocessed.npz` | `../data/iforest2.npz` |
+| `autoencoder` | `preprocessed.npz` | `../data/autoencoder.npz` |
+| `autoencoder2` | `preprocessed.npz` | `../data/autoencoder2.npz` |
+| `autoencoder3` | `preprocessed.npz` | `../data/autoencoder3.npz` |
+| `evaluate --model <name>` | `preprocessed.npz` and `../data/<name>.npz` | `../results/<name>.json` |
 
-## Outputs
+`download` leaves an existing zip in place and exits with status 0. `data/` is gitignored. Score rows follow the window rows in `preprocessed.npz`.
 
-| Command | Writes |
-| --- | --- |
-| `preprocess` | `../data/preprocessed.npz` |
-| `iforest` | `../data/iforest.npz` |
-| `iforest2` | `../data/iforest2.npz` |
-| `autoencoder` | `../data/autoencoder.npz` |
-| `autoencoder2` | `../data/autoencoder2.npz` |
-| `autoencoder3` | `../data/autoencoder3.npz` |
-| `evaluate --model <name>` | `../results/<name>.json` |
+## Order for a full run
 
-`data/` is gitignored. Score rows follow the window rows in `preprocessed.npz`.
+```text
+download
+load
+preprocess
+iforest, iforest2, autoencoder, autoencoder2, autoencoder3
+evaluate for each model name
+```

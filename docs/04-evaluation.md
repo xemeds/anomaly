@@ -1,100 +1,129 @@
 # Evaluation
 
-`python -m anomaly.evaluate --model <name>` reads one score file and `preprocessed.npz`. It does not reopen the zip or the raw label files. Every model uses this command. The threshold rule does not change between models.
+`python -m anomaly.evaluate --model <name>` reads one score file and `data/preprocessed.npz`. Every model uses this command. It does not open the zip or the raw label files.
 
-The score vector follows the window rows. Grid index 0 is the start of the first kept window. A window at grid index `g` covers `g` through `g + 16`.
+The score rows follow the window rows. A window whose start is 30-second index `g` covers `g` through `g + 16`.
 
-Published definitions come from the ESA-ADB paper, Kotowski et al., *European Space Agency Benchmark for Anomaly Detection in Satellite Telemetry* ([2406.17826v2.pdf](2406.17826v2.pdf)).
+The metric definitions used here are the corrected event-wise F0.5 from the ESA-ADB paper, Kotowski et al., *European Space Agency Benchmark for Anomaly Detection in Satellite Telemetry* ([2406.17826v2.pdf](2406.17826v2.pdf)), and point-adjusted F1.
 
-## What is scored
+`results/*.json` is not in the repository. The numbers below are the recorded test scores: full precision for Isolation Forest and the autoencoder is in `data/metrics.json`, and the other three models were recorded to three decimal places. Counts are from those same runs.
 
-Positives are anomalies and rare nominal events. One ESA event id counts once, even when it has several runs. A scored timestamp is one of the 17 grid times of a kept window. Communication gaps, invalid segments, and the leftover samples at the end of a split are already dropped.
+## Periods
 
-Months 82–84 select the threshold. Months 85–168 are the reported score. Test labels do not move the threshold.
+| Role | Months | Dates in the files | Windows |
+| --- | --- | --- | ---: |
+| Threshold | 82–84 | 2006-10-01 to 2006-12-31 | 15,585 |
+| Test | 85–168 | 2007-01-01 to 2013-12-31 | 433,185 |
 
-Validation has three physical events and a thin window count: 2 anomaly windows and 94 rare windows, out of 15,585 validation windows. The events are `id_110` (anomaly), `id_112` (rare event), and `id_114` (anomaly). The month split stays as specified.
+Validation has three physical events: `id_110` (anomaly), `id_112` (rare event), and `id_114` (anomaly). Among the 15,585 windows, 2 are anomaly windows and 94 are rare windows.
 
-On the current score files, every frozen threshold equals the highest validation-window score of `id_112`. For Isolation Forest, the autoencoder, Autoencoder 2, and Autoencoder 3, `id_110` and `id_114` score above that value, so all three validation events are detected. For Isolation Forest 2, `id_112` is the only validation event at or above the threshold. With three events, that operating point is statistically thin. The selection rule is unchanged.
+Test has 65 physical events that overlap a kept window: 29 anomalies and 36 rare events. Scored timestamps: 433,185 × 17 = 7,364,145. Nominal scored timestamps: 7,230,879.
 
 ## Threshold
 
-Candidates are the distinct validation scores, taken from high to low. A score at or above the candidate is an anomaly. The candidate with the highest corrected event-wise F0.5 is kept. A tie keeps the higher threshold. A zero denominator makes that candidate’s F0.5 0. The chosen value is then applied to test.
+Candidates are the distinct validation scores, taken from high to low. The one with the highest corrected event-wise F0.5 is kept. A tie keeps the higher score. A zero denominator makes that candidate’s F0.5 0.
 
-## Corrected event-wise F0.5
+The chosen value is frozen before the test score is computed. Test labels are not used to choose it. Using validation labels for the search is the protocol. It is not test leakage.
 
-An event is a true positive when any scored timestamp in any of its runs is predicted anomalous. Otherwise it is a false negative. A predicted stretch that overlaps no positive event is one false positive. A stretch is a run of predicted-anomalous windows whose grid starts are 17 steps apart. A gap in scored time ends the stretch.
+The operating point is fragile. There are only three validation events. On the current score files, every frozen threshold equals the highest validation-window score of `id_112`.
+
+| Model | Frozen threshold | Validation events at or above it |
+| --- | ---: | --- |
+| Isolation Forest | 0.6295868877023341 | all 3 |
+| Isolation Forest 2 | 0.5830825978289468 | `id_112` only |
+| Autoencoder | 1.0146793204167186 | all 3 |
+| Autoencoder 2 | 2.3840020391694683 | all 3 |
+| Autoencoder 3 | 0.6651166686844907 | all 3 |
+
+For Isolation Forest 2, `id_112` is also the highest validation score, and `id_110` and `id_114` fall below it.
+
+## Event-wise metrics
+
+Positives are anomalies and rare events. One event id counts once, even when it has several rows. An event is detected if any scored timestamp in any of its rows is predicted anomalous. Otherwise it is missed.
+
+A false-positive stretch is a run of predicted-anomalous windows, with starts 17 steps apart, that does not touch any positive event. A hole in the scored timestamps ends the run.
 
 Nominal time is the scored timestamps outside every positive event.
 
 ```text
-R_e = TP_e / (TP_e + FN_e)
-P_re = (TP_e / (TP_e + FP_e)) * (1 - FP_t / N_t)
-F0.5 = 1.25 * P_re * R_e / (0.25 * P_re + R_e)
+recall = detected / (detected + missed)
+corrected precision = (detected / (detected + false stretches)) * (1 - flagged nominal / nominal)
+F0.5 = 1.25 * corrected precision * recall / (0.25 * corrected precision + recall)
 ```
 
-`FP_t` is the number of nominal scored timestamps predicted anomalous. `N_t` is the number of nominal scored timestamps. The factor `(1 - FP_t / N_t)` is the correction in the ESA-ADB paper. β = 0.5, so the squared term is 0.25. If any denominator is zero, F0.5 is 0.
+β = 0.5, so precision is weighted more than recall. If a denominator is zero, F0.5 is 0.
 
-F0.5 is not the event recall. For the autoencoder, event recall is 25/65 = 0.385 and corrected F0.5 is 0.756.
+Event-wise F0.5 is not event recall. For the autoencoder, event recall is 25/65 = 0.385. Corrected F0.5 is 0.756. F0.5 = 0.756 does not mean that 75.6% of events were detected.
 
-## Point-adjusted F1
+## Point-adjusted metrics
 
-The window decision is copied onto its 17 timestamps. If any of those predicted-anomalous timestamps hits an event, every scored timestamp in every run of that event is marked anomalous. Nominal timestamps between runs stay nominal. Precision, recall, and F1 are then computed on scored timestamps. This is not ordinary pointwise F1.
-
-```text
-P = TP / (TP + FP)
-R = TP / (TP + FN)
-F1 = 2 * P * R / (P + R)
-```
-
-A zero denominator makes F1 0.
-
-## Test set size
-
-| | Count |
-| --- | ---: |
-| Test windows | 433,185 |
-| Scored timestamps | 7,364,145 |
-| Nominal scored timestamps | 7,230,879 |
-| Physical events overlapping test | 65 |
-
-The 65 events are 29 anomalies and 36 rare events. That split is the same for every model. How many of them are detected is not.
+The window decision is copied onto its 17 timestamps. If any of those timestamps hits an event, every scored timestamp in every row of that event is marked anomalous. Nominal timestamps between rows stay nominal. Precision, recall, and F1 are then computed on scored timestamps. This is not ordinary pointwise F1. It is reported because a single hit can cover a long event, which changes the picture given by the event counts.
 
 ## Results
 
-Rounded to three decimal places. The threshold for each row was frozen on validation.
+| Model | Event precision | Event recall | Event F0.5 | Point precision | Point recall | Point F1 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Isolation Forest | 0.17686300963163984 | 0.36923076923076925 | 0.19743564668270872 | 0.6431017448273878 | 0.5030840574490117 | 0.5645406434065773 |
+| Isolation Forest 2 | 0.994 | 0.154 | 0.475 | 0.631 | 0.518 | 0.569 |
+| Autoencoder | 0.9956349705201816 | 0.38461538461538464 | 0.7555681596298452 | 0.6805623026475589 | 0.5045923191211562 | 0.5795134310607825 |
+| Autoencoder 2 | 0.996 | 0.385 | 0.756 | 0.681 | 0.505 | 0.579 |
+| Autoencoder 3 | 0.196 | 0.385 | 0.217 | 0.643 | 0.505 | 0.566 |
 
-### Event-wise
+Isolation Forest 2, Autoencoder 2, and Autoencoder 3 are shown to three decimal places because that is how those runs were recorded. The other two rows are the unrounded values in `data/metrics.json`.
 
-| Model | Precision | Recall | F0.5 | Detected |
-| --- | ---: | ---: | ---: | ---: |
-| Isolation Forest | 0.177 | 0.369 | 0.197 | 24/65 |
-| Isolation Forest 2 | 0.994 | 0.154 | 0.475 | 10/65 |
-| Autoencoder | 0.996 | 0.385 | 0.756 | 25/65 |
-| Autoencoder 2 | 0.996 | 0.385 | 0.756 | 25/65 |
-| Autoencoder 3 | 0.196 | 0.385 | 0.217 | 25/65 |
+| Model | Detected | Anomalies | Rare events | False-positive stretches | Nominal timestamps flagged |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Isolation Forest | 24/65 | 19/29 | 5/36 | not recorded at this threshold | not recorded at this threshold |
+| Isolation Forest 2 | 10/65 | 5/29 | 5/36 | 0 | 40,415 / 7,230,879 |
+| Autoencoder | 25/65 | 19/29 | 6/36 | 0 | 31,563 / 7,230,879 |
+| Autoencoder 2 | 25/65 | 19/29 | 6/36 | 0 | 31,571 / 7,230,879 |
+| Autoencoder 3 | 25/65 | 19/29 | 6/36 | 102 | 37,300 / 7,230,879 |
 
-### Point-adjusted
+Event recall is the detected column. Anomaly recall and rare-event recall are the other two columns. They are not the same number.
 
-| Model | Precision | Recall | F1 |
-| --- | ---: | ---: | ---: |
-| Isolation Forest | 0.643 | 0.503 | 0.565 |
-| Isolation Forest 2 | 0.631 | 0.518 | 0.569 |
-| Autoencoder | 0.681 | 0.505 | 0.580 |
-| Autoencoder 2 | 0.681 | 0.505 | 0.579 |
-| Autoencoder 3 | 0.643 | 0.505 | 0.566 |
+## What each model did
 
-## Reading the table
+Isolation Forest detects 24 of 65 events, including 19 of 29 anomalies, but corrected precision is 0.177. Many predicted stretches do not hit a labeled event. The 24-number summary also drops the order of samples inside the window. A cutoff of 0.630, used in an earlier check, is above the frozen threshold 0.6295868877023341 and is not this result.
 
-The best reconstruction result is the 1D-CNN autoencoder. Autoencoder 2 uses the same network and the same detected events. Its event-wise numbers match. Its point-adjusted F1 is 0.579 against 0.580. They are effectively tied.
+Isolation Forest 2 detects 10 of 65 events: 5 anomalies and 5 rare events. Corrected precision is 0.994 because there are 0 false-positive stretches. The threshold is the highest validation score, so only windows at least as unusual as `id_112` are flagged. Eight events are found by both forests. This run adds 1 anomaly and 1 rare event, and it misses 15 anomalies and 1 rare event that the 24-feature forest finds at its own threshold. The higher F0.5 comes from the false-positive stretches, not from finding more events.
 
-The best classical result is Isolation Forest 2. It detects fewer events than the 24-feature forest (10 against 24) and has a much higher corrected precision (0.994 against 0.177), because it produces no false-positive stretches at its frozen threshold. Point-adjusted F1 barely moves: 0.569 against 0.565.
+The autoencoder detects 25 of 65 events: 19 anomalies and 6 rare events, with 0 false-positive stretches. Corrected precision is 0.996 and F0.5 is 0.756. The 10 missed anomalies have best-window scores from 0.024 to 0.154, in the same range as ordinary windows. 86 of 3,996 rare test windows reach the threshold.
 
-Autoencoder 3 detects the same 25 events as the smaller autoencoder and adds 102 false-positive stretches. Corrected precision falls to 0.196. Corrected F0.5 falls to 0.217. Point-adjusted F1 stays near 0.566, so the two metrics do not rank this model the same way.
+Autoencoder 2 detects the same 25 events. Point-adjusted F1 is 0.579 against 0.580. The two runs are tied on event-wise F0.5. 85 of 3,996 rare test windows reach its threshold. The 10 missed anomalies have best-window scores from 0.038 to 0.406.
 
-Across the stronger models, most missed events are rare nominal events. Isolation Forest detects 19 of 29 anomalies and 5 of 36 rare events. The autoencoder detects 19 anomalies and 6 rare events. Isolation Forest 2 detects 5 of each.
+Autoencoder 3 detects the same 25 events and adds 102 false-positive stretches. Corrected precision falls to 0.196 and F0.5 to 0.217. Point-adjusted F1 stays at 0.566. The deeper network did not move the missed events.
 
-## Limitations
+## Selected models
 
-The validation hold-out has three events. The selected threshold sits on the weakest of the events that the model still detects, which on these runs is `id_112`. A different single event in those three months would move the operating point. The split is not thickened to avoid that.
+Under corrected event-wise F0.5, the best classical model is Isolation Forest 2 (0.475 against 0.197). The best reconstruction model, and the best result overall, is the autoencoder (0.756). Autoencoder 2 matches that F0.5. Point-adjusted F1 keeps the same order, with a smaller gap: 0.580 for the autoencoder, 0.579 for Autoencoder 2, and 0.569 for Isolation Forest 2.
 
-Corrected F0.5 penalises false-positive stretches and flagged nominal time. Point-adjusted F1 expands a hit event to its full labeled span. A model can therefore look strong on one and ordinary on the other. Both numbers are reported. The primary comparison is corrected event-wise F0.5.
+The weaker runs stay in the table. They are part of the record.
+
+## Difference from the paper
+
+Table 2 of the paper reports several detectors. Two cells are easy to confuse with this project.
+
+On Mission 2, channels 18–28, windowed Isolation Forest has corrected event-wise F0.5 of 0.949. That is a different mission. None of the scores above is a result on that subset.
+
+On Mission 1, channels 41–46, the same table gives windowed Isolation Forest an event-wise precision below 0.001, a recall of 0.738, and an F0.5 below 0.001. Telemanom-ESA-Pruned, a different model, reaches 0.786 on that subset. Those cells use the paper’s pipeline. They are not a controlled baseline for these runs.
+
+| Aspect | Reference paper | This project |
+| --- | --- | --- |
+| Release | June 2024 record cited in the paper | April 2025 Mission 1 |
+| Mission | Mission 1 and Mission 2 | Mission 1 only |
+| Channels | Lightweight Mission 1 is 41–46. The 0.949 result is Mission 2, channels 18–28 | Channels 41–46 only |
+| Window length | 17 for windowed Isolation Forest, reduced from 100 (Supplementary Table 8) | 17 |
+| Window stride | Not listed in Supplementary Table 8 | 17, a project choice |
+| IF representation | Isolation Forest is not standardized. The table does not list mean, minimum, and maximum | Scaled windows. Reported forest: 102 flattened values. Other forest: 24 summaries |
+| IF configuration | 200 trees, `random_state` 42, `max_features` 1.0, `max_samples` none, `bootstrap` false | 200 trees, seed 42, `contamination="auto"`, `max_samples` left at `"auto"` (256). Anomaly and rare windows stay in the fit |
+| Threshold | Contamination and thresholds are set on the training set, then applied to test | Distinct validation scores. Maximum corrected F0.5. Higher threshold on a tie |
+| Evaluation | Corrected event-wise F0.5, plus channel-aware, ADTQC, and affiliation scores | Corrected event-wise F0.5 and point-adjusted F1. One decision per window |
+| Reconstruction | DC-VAE-ESA and Telemanom-ESA | 1D-CNN autoencoder, mean squared error, 20 epochs |
+
+The numbers can differ because the 30-second timestamps are an exact 30-second step, not the paper’s 0.033 Hz rounding; the reported forest sees scaled, flattened samples; stride 17 is a project choice; the threshold is a validation search; the autoencoder is not Telemanom or DC-VAE; and this scorer does not compute the paper’s channel-aware, ADTQC, or affiliation scores.
+
+These results are valid for this pipeline. They are not a controlled reproduction of the paper, so the scores should not be treated as a direct benchmark against 0.949, against the paper’s windowed Isolation Forest on channels 41–46, or against Telemanom-ESA-Pruned.
+
+## Limitation of the event-wise score
+
+A stretch that touches an event counts as one true positive, however much nominal time it also covers. The autoencoder has 0 false-positive stretches and still flags 31,563 nominal timestamps. Those timestamps sit inside stretches that also hit a labeled event. They change corrected precision only through the nominal-time factor, from 25/25 to 0.9956349705201816. Isolation Forest 2 has the same pattern: 0 false-positive stretches and 40,415 flagged nominal timestamps.

@@ -1,6 +1,6 @@
 # Anomaly detection on ESA-ADB Mission 1
 
-Kotowski et al., *European Space Agency Benchmark for Anomaly Detection in Satellite Telemetry*, is the reference paper ([2406.17826v2.pdf](2406.17826v2.pdf)). This project uses the April 2025 release of Mission 1. The paper cites the June 2024 release. The run uses the paper’s split and its corrected event-wise F0.5. It is not a reproduction of the paper’s numbers.
+Kotowski et al., *European Space Agency Benchmark for Anomaly Detection in Satellite Telemetry*, is the reference paper ([2406.17826v2.pdf](2406.17826v2.pdf)). This project uses the April 2025 release of Mission 1. The paper cites the June 2024 release. The run uses the paper’s month split and its corrected event-wise F0.5. It is not a reproduction of the paper’s numbers.
 
 Details are in [preprocessing](02-preprocessing.md), [implementation](03-implementation.md), and [evaluation](04-evaluation.md).
 
@@ -36,7 +36,7 @@ A 24-feature Isolation Forest, a max-channel-error autoencoder, and a deeper aut
 
 The paper’s 0.949 windowed Isolation Forest F0.5 is Mission 2, channels 18–28. This project does not run that subset.
 
-On Mission 1, channels 41–46, the paper’s windowed Isolation Forest has event-wise F0.5 below 0.001 (recall 0.738, precision below 0.001). Telemanom-ESA-Pruned reaches 0.786 on that same table. Those are the paper’s detectors, not these ones.
+The same-channel comparison is Table 2 of the paper, Mission 1, channels 41–46. Even that cell is not the same experiment. The table below is the list of differences. The numeric comparison is in section 6.
 
 | Aspect | Reference paper | This project |
 | --- | --- | --- |
@@ -47,12 +47,11 @@ On Mission 1, channels 41–46, the paper’s windowed Isolation Forest has even
 | IF settings | 200 trees, `max_samples` none | 200 trees, `max_samples` left at `"auto"` (256) |
 | Threshold | Set from the training set | Validation search, max corrected F0.5, higher score on a tie |
 | Reconstruction | Telemanom-ESA, DC-VAE-ESA | 1D-CNN autoencoder, 20 epochs |
-
-The 30-second step, the flattened input, the stride, the validation threshold, and the autoencoder are all different from the paper. These scores are valid for this pipeline. They are not a controlled reproduction, so they should not be read as a win or a loss against the paper.
+| Extra scores | Channel-aware, ADTQC, affiliation | Point-adjusted F1. The paper’s Table 2 does not report it |
 
 ## 5. Results
 
-Thresholds were frozen on validation. Event recall is detected events / 65. F0.5 weights precision more than recall. For the autoencoder, recall is 25/65 = 0.385 and F0.5 is 0.756.
+Thresholds were frozen on validation. Event recall is detected events / 65. F0.5 weights precision more than recall. For the autoencoder, recall is 25/65 = 0.385 and F0.5 is 0.756. F0.5 = 0.756 does not mean that 75.6% of events were detected.
 
 | Model | Event precision | Event recall | Event F0.5 | Point precision | Point recall | Point F1 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -64,42 +63,73 @@ Thresholds were frozen on validation. Event recall is detected events / 65. F0.5
 
 | Model | Detected | Anomalies | Rare events | False-positive stretches |
 | --- | ---: | ---: | ---: | ---: |
-| Isolation Forest | 24/65 | 19/29 | 5/36 | not recorded at this threshold |
+| Isolation Forest | 24/65 | 19/29 | 5/36 | 111 |
 | Isolation Forest 2 | 10/65 | 5/29 | 5/36 | 0 |
 | Autoencoder | 25/65 | 19/29 | 6/36 | 0 |
 | Autoencoder 2 | 25/65 | 19/29 | 6/36 | 0 |
 | Autoencoder 3 | 25/65 | 19/29 | 6/36 | 102 |
 
-Under event-wise F0.5, the autoencoder is the best result (0.756) and Isolation Forest 2 is the best classical result (0.475). Point-adjusted F1 is 0.580 against 0.569. Full unrounded values for Isolation Forest and the autoencoder are in [evaluation](04-evaluation.md).
+Under event-wise F0.5, the autoencoder is the best result in this project (0.756) and Isolation Forest 2 is the best classical result (0.475). Point-adjusted F1 is 0.580 against 0.569. Full unrounded values for Isolation Forest and the autoencoder are in [evaluation](04-evaluation.md).
 
-## 6. Why the results look like this
+## 6. Side-by-side with the paper
 
-Isolation Forest 2 is conservative. Its threshold is the highest validation score, so a test window is flagged only when it is at least as unusual as `id_112`. There are 0 false-positive stretches, and corrected precision is 0.994. It misses 55 of 65 events, including 24 of 29 anomalies. The 24-feature forest finds more events (24/65, including 19 anomalies), but its corrected precision is 0.177, so F0.5 falls to 0.197. Flattening the window removed false-positive stretches. It did not recover the events that summary forest finds.
+All rows are corrected event-wise scores. The paper rows are Table 2, Mission 1, channels 41–46, all events except communication gaps. Our rows are the two selected models on the same channel list, with our own preprocessing, windows, and threshold. Point-adjusted F1 is only in our table, because Table 2 does not report it.
 
-The autoencoder’s F0.5 is higher because some anomaly windows have a much larger reconstruction error than nominal windows, and the threshold catches 19 of 29 anomalies with no false-positive stretch. The 10 missed anomalies score from 0.024 to 0.154, next to ordinary windows. Autoencoder 2 finds the same 25 events. Autoencoder 3 finds them too, then adds 102 false-positive stretches, and F0.5 falls to 0.217.
+| Detector | Where | Precision | Recall | F0.5 |
+| --- | --- | ---: | ---: | ---: |
+| Windowed Isolation Forest | Paper, Mission 1, channels 41–46 | < 0.001 | 0.738 | < 0.001 |
+| Isolation Forest 2 | This project | 0.994 | 0.154 | 0.475 |
+| Telemanom-ESA | Paper, Mission 1, channels 41–46 | 0.148 | 0.894 | 0.178 |
+| Telemanom-ESA-Pruned | Paper, Mission 1, channels 41–46 | 0.999 | 0.424 | 0.786 |
+| 1D-CNN autoencoder | This project | 0.996 | 0.385 | 0.756 |
+| Windowed Isolation Forest | Paper, Mission 2, channels 18–28 | 0.951 | 0.940 | 0.949 |
 
-Rare events are harder than anomalies. The autoencoder finds 19 of 29 anomalies and 6 of 36 rare events. Only 86 of 3,996 rare test windows reach its threshold. Isolation Forest 2 finds 5 of each. A rare event is planned telemetry that is unusual but not a fault, and after scaling much of it still looks like normal data.
+The Mission 2 row is there so it is not mistaken for the Mission 1 comparison. It is a different mission.
 
-Event-wise scores count each physical event once. Point-adjusted F1 spreads one hit across that event’s timestamps, so a long event can look recovered from a single window. That is why the autoencoder’s point-adjusted recall is 0.505 while its event recall is 0.385, and why the two forests have similar point-adjusted F1 (0.565 and 0.569) with very different event-wise F0.5.
+Against the paper’s windowed Isolation Forest on channels 41–46, Isolation Forest 2 has much higher corrected precision (0.994 against below 0.001) and a higher F0.5 (0.475 against below 0.001). Its recall is much lower (0.154 against 0.738). It detects 10 of our 65 test events. The paper’s forest is credited with finding far more events and with almost no corrected precision, which pulls F0.5 below 0.001. A higher F0.5 here means fewer false event alarms under our scorer. It does not mean more of the events were found.
 
-## 7. Limitations
+Against Telemanom-ESA, the autoencoder has higher precision (0.996 against 0.148) and a higher F0.5 (0.756 against 0.178), and lower recall (0.385 against 0.894). Telemanom-ESA is the high-recall end of that table. Our autoencoder is the high-precision end.
+
+Telemanom-ESA-Pruned is the closest paper result: precision 0.999, recall 0.424, F0.5 0.786. Our autoencoder is 0.996, 0.385, and 0.756. Precision is similar and very high. Recall is a bit lower (25 of our 65 events, against a paper recall of 0.424). F0.5 is a bit lower. That is not a win, and it is not the same model.
+
+Our point-adjusted F1 is 0.569 for Isolation Forest 2 and 0.580 for the autoencoder. There is no Table 2 number to put beside them.
+
+## 7. Why the results differ
+
+Corrected F0.5 uses β = 0.5, so precision counts more than recall. A detector can score well while missing most events, if the alarms it does raise almost all touch a labeled event.
+
+That is what Isolation Forest 2 does. The frozen threshold is the highest validation score, so a test window is flagged only when it is at least as unusual as `id_112`. There are 0 false-positive stretches, and corrected precision is 0.994. Recall is 10/65. The 24-feature forest in this same project finds more events (24/65, including 19 of 29 anomalies) but it has 111 false-positive stretches, so corrected precision is 0.177 and F0.5 falls to 0.197. Inside our own runs, the higher F0.5 is the more conservative detector, not the one that covers more events.
+
+The paper’s windowed Isolation Forest on these channels sits at the other end: recall 0.738 and precision below 0.001. A low precision of that size means almost every predicted event is a false stretch, so the precision term drives F0.5 below 0.001 even though many events are hit. Our higher precision is the opposite operating point. It can come from a higher threshold and from fewer false-positive stretches. The cost is the events left below the cut: Isolation Forest 2 misses 55 of 65, including 24 of 29 anomalies.
+
+The same trade-off shows up for reconstruction. Telemanom-ESA’s recall of 0.894 comes with precision 0.148, so F0.5 stays at 0.178. Pruning, in the paper, raises precision to 0.999, cuts recall to 0.424, and raises F0.5 to 0.786. Our autoencoder lands near that pruned point for a different reason: reconstruction error puts some anomaly windows far above nominal windows, the validation search keeps a threshold with 0 false-positive stretches, and 19 of 29 anomalies are hit. The 10 missed anomalies score from 0.024 to 0.154, next to ordinary windows. Autoencoder 3 finds the same 25 events and adds 102 false-positive stretches, and F0.5 falls to 0.217. Again, F0.5 moves with the false stretches, not with the number of events found.
+
+Rare events are a large part of the missed set. The autoencoder finds 19 of 29 anomalies and only 6 of 36 rare events. Only 86 of 3,996 rare test windows reach its threshold. Isolation Forest 2 finds 5 of each. A rare event is planned telemetry that is unusual but not a fault. After scaling, much of it still looks like normal data, so a threshold chosen to avoid false stretches leaves it below the cut.
+
+Two details of the corrected event-wise score make a high F0.5 easier than the recall suggests. One hit anywhere in an event counts the whole event once, so a long event and a one-timestamp event are the same true positive. A long alarm that touches an event is not a false-positive stretch, even if most of its timestamps are nominal. The autoencoder flags 31,563 of 7,230,879 nominal timestamps with 0 false-positive stretches. Isolation Forest 2 flags 40,415. Those timestamps sit inside stretches that also hit a labeled event, so they barely change corrected precision. Point-adjusted F1 then spreads that one hit across the event’s timestamps, which is why point-adjusted recall (0.505 for the autoencoder, 0.518 for Isolation Forest 2) is higher than event recall, and why the two forests have similar point-adjusted F1 (0.565 and 0.569) with very different event-wise F0.5.
+
+The remaining gap versus the paper is the pipeline, not a claim that one detector dominates. The release, the exact 30-second step, stride 17, scaled and flattened forest inputs, the validation threshold, and a 1D-CNN instead of Telemanom or DC-VAE are all different. The scores above describe each pipeline on its own. They do not establish that this project finds more anomalies.
+
+## 8. Limitations
 
 The test numbers are valid under this protocol. The threshold is not well pinned down.
 
 Validation has three events. Every frozen threshold here sits on `id_112`. For Isolation Forest 2 that is the only validation event above the cut. Another event in those three months would move the score. Test labels were not used.
 
-Rare events are most of the misses. Event-wise F0.5 and point-adjusted F1 also disagree on how strong a detector looks.
+Rare events are most of the misses. Event-wise F0.5 and point-adjusted F1 also disagree on how strong a detector looks, as section 7 describes.
 
-A stretch that touches an event counts as one true positive, even if it also covers a lot of nominal time. The autoencoder has 0 false-positive stretches and still flags 31,563 of 7,230,879 nominal timestamps. Isolation Forest 2 flags 40,415. Those timestamps sit inside stretches that also hit a labeled event, so they barely move corrected precision.
-
-## 8. Semi-supervised extension
+## 9. Semi-supervised extension
 
 This was not implemented.
 
-The forest treats rare training windows as ordinary telemetry. The autoencoder drops them. A follow-up would keep the frozen anomaly score and add a small classifier for known rare events, fit only on training windows whose label is a rare event. A test window close to that class would be reported as a known rare event rather than as an anomaly. Validation would still set the anomaly threshold. Test labels would stay unused. The aim is the 30 rare events missed by the autoencoder and the 31 missed by Isolation Forest 2.
+The forest and the autoencoder would stay trained as they are now: telemetry only, no class target. The new piece is a second stage fit on the validation months, which are the only labeled development data this split allows.
 
-## 9. Conclusion
+Each validation window would keep the frozen anomaly score. A small logistic regression would take that score, and the same 24 window summaries already used by the first Isolation Forest, and predict three labels that validation already has: anomaly, rare event, or nominal. The thing it can learn, if the three events are enough to show it, is that a high score is not one kind of alarm. The two validation anomalies (`id_110`, `id_114`) and the rare event (`id_112`) need not sit at the same score, and a single F0.5 threshold cannot say which is which. A second stage could keep a high bar for an anomaly alarm, which protects precision, and send a lower or differently shaped score to a rare-event label instead of dropping it. That is the precision–recall change this project actually needs: Isolation Forest 2 misses 24 anomalies and 31 rare events, and the autoencoder misses 10 anomalies and 30 rare events, under a cut that was chosen only to maximise F0.5.
 
-The reported classical model is Isolation Forest 2. The reported reconstruction model is the 1D-CNN autoencoder. On corrected event-wise F0.5 the autoencoder leads, 0.756 against 0.475, at event recalls of 25/65 and 10/65.
+Leakage stays closed if four rules hold. The forest and the autoencoder are not retrained on validation labels. The logistic regression sees only months 82–84. Months 85–168 are scored once, after that regression is frozen. Test labels are not used to pick features, a regularisation weight, or a cutoff. With only 2 anomaly windows, 94 rare windows, and 3 events, this second stage can overfit the development set. That is a reason to treat it as a proposal, not as an expected gain.
 
-These numbers describe this pipeline. They are not a reproduction of the paper: the release, the 30-second step, the forest input, the threshold, and the reconstruction model differ, and 0.949 is Mission 2, channels 18–28. The main limit on the threshold is the three-event validation set.
+## 10. Conclusion
+
+The reported classical model is Isolation Forest 2. The reported reconstruction model is the 1D-CNN autoencoder. On corrected event-wise F0.5 the autoencoder leads inside this project, 0.756 against 0.475, at event recalls of 25/65 and 10/65.
+
+On the paper’s Mission 1, channels 41–46 table, those F0.5 numbers sit far above windowed Isolation Forest (below 0.001) and Telemanom-ESA (0.178), and just below Telemanom-ESA-Pruned (0.786). The higher F0.5 against the unpruned paper models comes with lower recall. It is a more conservative alarm, not broader event coverage. The 0.949 figure remains Mission 2, channels 18–28. The main limit on our threshold is the three-event validation set.
